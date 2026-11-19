@@ -1,0 +1,11 @@
+# Python environment and caches
+.venv/
+__pycache__/
+
+# Market data and generated result tables (large; regenerate with the scripts)
+*.parquet
+*.pkl
+
+# Logs
+*.log
+*.err

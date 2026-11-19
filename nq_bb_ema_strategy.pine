@@ -1,0 +1,83 @@
+//@version=5
+// Bollinger 3-sigma reject + EMA200 confluence, fade (paper-trading version of bb_nq_check.py "core").
+// Use on a 15-minute MNQ/NQ chart. All Globex hours by default, as in the backtest.
+//
+// Signal (on bar close):
+//   Long : low <= lower band, close > lower band, and the bar tests the EMA200:
+//          low <= EMA + tol and close >= EMA - tol   (tol = 0.25 x ATR14)
+//   Short: mirror at the upper band.
+// Entry at the next bar's open. Stop = 2 x ATR14 (signal bar) from entry, target = 1.5 x the stop.
+// Time exit after 20 bars. One position at a time; signals while in a trade are ignored.
+// Costs: $0.62 per contract per side + 2 ticks slippage per fill = 1 pt + $1.24 per round trip (as backtested).
+//
+// Differences from the Python backtest: it used Dukascopy NQ CFD 1-minute data (exits checked minute by
+// minute; stop first if both were hit in the same minute). Here exits are checked on 15m bars unless you
+// turn on the Bar Magnifier in the strategy settings (recommended). Continuous futures also roll.
+strategy("NQ BB 3σ reject + EMA200", shorttitle="NQ BB-EMA", overlay=true,
+     initial_capital=25000, default_qty_type=strategy.fixed, default_qty_value=1,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.62,
+     slippage=2, calc_on_every_tick=false, process_orders_on_close=false)
+
+// ---------- Inputs ----------
+bbLen    = input.int(20, "BB length", minval=2)
+bbMult   = input.float(3.0, "BB std multiplier", step=0.25)
+emaLen   = input.int(200, "EMA length (confluence level)")
+atrLen   = input.int(14, "ATR length")
+tolATR   = input.float(0.25, "EMA touch tolerance (x ATR)", step=0.05)
+slATR    = input.float(2.0, "Stop (x ATR)", step=0.25)
+tpR      = input.float(1.5, "Target (x stop distance)", step=0.25)
+maxBars  = input.int(20, "Time exit after N bars", minval=1)
+useSess  = input.bool(false, "Only take signals inside a session", group="Session")
+sess     = input.session("0930-1600", "Session (New York time)", group="Session")
+showPlot = input.bool(true, "Plot bands and EMA")
+
+if timeframe.period != "15"
+    runtime.error("Backtested on 15-minute bars. Switch the chart to 15m (or remove this check to experiment).")
+
+// ---------- Indicators ----------
+basis = ta.sma(close, bbLen)
+dev   = ta.stdev(close, bbLen)          // population std, as in the backtest
+upper = basis + bbMult * dev
+lower = basis - bbMult * dev
+ema   = ta.ema(close, emaLen)
+atr   = ta.sma(ta.tr(true), atrLen)     // simple average of true range, as in the backtest
+tol   = tolATR * atr
+
+inSess = not useSess or not na(time(timeframe.period, sess, "America/New_York"))
+ready  = not na(upper) and not na(ema) and atr > 0 and bar_index >= emaLen
+
+longSig  = ready and inSess and low <= lower and close > lower and low <= ema + tol and close >= ema - tol
+shortSig = ready and inSess and high >= upper and close < upper and high >= ema - tol and close <= ema + tol
+
+// ---------- Orders ----------
+var int entryBar = na
+flat = strategy.position_size == 0
+
+if flat and (longSig or shortSig)
+    stopTicks = math.max(1, math.round(slATR * atr / syminfo.mintick))
+    tpTicks   = math.max(1, math.round(tpR * slATR * atr / syminfo.mintick))
+    if longSig
+        strategy.entry("Long", strategy.long)
+        strategy.exit("Long exit", from_entry="Long", loss=stopTicks, profit=tpTicks)
+    else
+        strategy.entry("Short", strategy.short)
+        strategy.exit("Short exit", from_entry="Short", loss=stopTicks, profit=tpTicks)
+
+// Remember the bar the position opened on (market orders fill at the next bar's open)
+if strategy.position_size != 0
+    entryBar := strategy.opentrades.entry_bar_index(0)
+
+// Time exit: close at the end of bar maxBars (order sent on that bar's close, fills at the next open)
+if strategy.position_size != 0 and bar_index - entryBar >= maxBars - 1
+    strategy.close_all(comment="Time exit")
+
+// ---------- Plots & alerts ----------
+plot(showPlot ? upper : na, "Upper band", color=color.new(color.gray, 30))
+plot(showPlot ? basis : na, "Basis",      color=color.new(color.gray, 60))
+plot(showPlot ? lower : na, "Lower band", color=color.new(color.gray, 30))
+plot(showPlot ? ema : na,   "EMA",        color=color.new(color.orange, 0), linewidth=2)
+plotshape(longSig,  "Long signal",  shape.triangleup,   location.belowbar, color.new(color.green, 0), size=size.tiny)
+plotshape(shortSig, "Short signal", shape.triangledown, location.abovebar, color.new(color.red, 0),   size=size.tiny)
+
+alertcondition(longSig and flat,  "BB-EMA long",  "NQ BB 3σ reject at EMA200: LONG at next open")
+alertcondition(shortSig and flat, "BB-EMA short", "NQ BB 3σ reject at EMA200: SHORT at next open")
