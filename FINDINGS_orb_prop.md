@@ -5,7 +5,7 @@ The Bollinger Band research (sessions "Local BTC data" and its fork, 19 Nov 2026
 [FINDINGS_bollinger.md](FINDINGS_bollinger.md).
 
 Data: Dukascopy 1-minute bars, Jan 2020 to Nov 2026 (Nasdaq-100 index as a stand-in for NQ futures; also
-S&P 500, BTCUSD, XAUUSD). Costs: 1 tick slippage per side plus $0.62 commission per side per micro contract.
+S&P 500, BTCUSD, XAUUSD). Costs: 1 point of slippage per round trip (2 ticks per side on NQ/MNQ) plus $0.62 commission per side per micro contract.
 All P&L is after costs unless stated.
 
 ## Bottom line
@@ -186,3 +186,77 @@ similar to 2024 (1.5%), yet 2024 was clearly positive and those years weren't.
 - The prop and own-account projections above assume the 2020–26 edge continues.
 
 Still to do: compare index vs real futures data (TradingView NQ1! on 15-minute bars).
+
+## Slippage and Monte Carlo tests
+
+Added 23 Nov 2026 (`slippage_test.py`, `monte_carlo.py`, data `nq_1m_2012_2026.parquet`). All figures 1 MNQ.
+
+### Slippage
+
+| Scenario (2020–26) | Total | $/trade | Worst DD | Years > 0 |
+|---|---|---|---|---|
+| No slippage | +$62,147 | $35.2 | −$7,090 | 7/7 |
+| **1 pt round trip (baseline)** | **+$58,613** | **$33.2** | **−$7,164** | **7/7** |
+| 2 pt | +$55,079 | $31.2 | −$7,238 | 6/7 |
+| 4 pt | +$48,011 | $27.2 | −$7,386 | 6/7 |
+| 6 pt | +$40,943 | $23.2 | −$7,775 | 6/7 |
+| Baseline + stops fill at gapped open | +$58,613 | $33.2 | −$7,164 | 7/7 |
+| + entries and stop-outs slip 0.25 × their minute's range | +$47,629 | $27.0 | −$7,459 | 6/7 |
+| + 0.5 × their minute's range | +$36,646 | $20.7 | −$7,753 | 6/7 |
+
+- **Slippage isn't what threatens E.** In 2020–26 it breaks even only at about 17.6 points per round
+  trip (35 ticks per side). Its stop is wide and only 9% of trades are stopped out; 1-minute bars
+  essentially never gap through the stop intraday.
+- **In 2014–19 there's no margin at all:** break-even slippage was 0.3 points, so any realistic cost
+  turns it negative (−$5.2k at 2 pt, −$11.3k at 4 pt).
+- The baseline is more conservative than the earlier write-ups said: 1 point per round trip is 2 ticks
+  per side, not 1.
+
+### Monte Carlo
+
+10,000 paths per scenario, resampling E's actual daily results in blocks of about 20 days so losing
+spells stay together. Scenarios for the future:
+- **2020–26 as is:** the edge continues exactly as backtested.
+- **Half edge:** the average trade is cut in half.
+- **2014–19 edge at today's prices:** 2014–19 trades rescaled to today's stop sizes (×4.5). This keeps
+  the edge in percentage terms, so costs weigh less than they did in 2014–19.
+- **Zero edge:** no edge before costs; costs still paid.
+
+**How sure are we of the edge?** Average trade with a 90% interval: 2020–26 $33.2 ($17.9 to $49.2);
+2014–19 −$1.4 (−$4.7 to +$2.5, 74% chance it's at or below zero); 2014–26 combined $17.2 ($7.9 to $26.7).
+
+**One year ahead:**
+
+| Scenario | Median P&L | Bad year (5th pct) | Chance of a losing year | Worst DD (95th pct) | Days without a new high (median / 95th pct) |
+|---|---|---|---|---|---|
+| 2020–26 as is | +$7,901 | −$1,372 | 8% | −$7,861 | 88 / 212 |
+| Half edge | +$3,708 | −$5,467 | 27% | −$9,940 | 121 / 245 |
+| 2014–19 edge, today's prices | +$800 | −$7,997 | 44% | −$11,800 | 148 / 250 |
+| Zero edge | −$1,211 | −$10,621 | 57% | −$13,477 | 176 / 252 |
+
+**Three years ahead:** 2020–26 as is: median +$24.4k, 1% chance of a loss. Half edge: +$12.1k, 13%.
+2014–19 edge: +$3.6k, 37%. Zero edge: −$2.9k, 60%, with a 95th-percentile drawdown of −$24.6k.
+
+Runs of 8–12 losing trades in a row happen in about 1 year in 20 in every scenario.
+
+**Chance of being busted** (equity can't cover the day's full stop + $100 margin):
+
+| Starting balance | $2k | $5k | $8k | $10k | $15k | $20k |
+|---|---|---|---|---|---|---|
+| 2020–26 as is, 1 yr / 3 yrs | 54% / 56% | 11% / 13% | 2% / 3% | 1% / 1% | 0% / 0% | 0% / 0% |
+| Half edge | 73% / 76% | 27% / 36% | 8% / 16% | 3% / 9% | 0% / 2% | 0% / 0% |
+| 2014–19 edge | 82% / 89% | 43% / 63% | 16% / 39% | 7% / 28% | 1% / 10% | 0% / 3% |
+| Zero edge | 89% / 94% | 56% / 77% | 27% / 61% | 14% / 49% | 2% / 25% | 0% / 11% |
+
+**What this means:**
+- The "$8–10k for 1 MNQ" guidance only holds if the 2020–26 edge carries on. Given the 2014–19 result,
+  **$15–20k is the balance that survives the weaker scenarios**, and $2k is busted more often than not
+  even in the best case.
+- **A year of paper trading is weak evidence.** A positive year proves little: even with no edge, a year ends
+  positive 43% of the time; with the full edge, 8% of years still lose. Waiting 3–6 months for a new
+  high is normal in every scenario.
+- **Any stopping rule will be noisy.** After 6 months, the average trade is below zero in 17% of spells
+  even with the full edge, 35% with half the edge, and 57% with none. A negative 6 months is a warning
+  (about 3 times likelier with no edge than with the full edge), not proof. After 12 months the gap
+  widens: a losing year happens 8% of the time with the full edge and 57% with none. A reasonable rule
+  is to stop after a losing 12 months, and cut size after a losing 6 months.

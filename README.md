@@ -18,6 +18,9 @@ Backtests on Dukascopy 1-minute data (NQ, ES, BTC, gold; Jan 2020 – Nov 2026).
    tests, but shrinking from ~0.4% to ~0.1% a trade since 2024.
 3. **Bollinger scalps / fades and 300+ ORB add-ons:** no edge after costs.
 4. **Prop route:** E on 50K at 2 MNQ ≈ $4–5k/yr; no setup keeps a single funded account alive reliably.
+5. **Slippage / Monte Carlo:** slippage is not the risk (break-even ~17 pts round trip in 2020–26). The risk is
+   the edge itself: if it is weaker than 2020–26, 1 MNQ needs $15–20k to survive, and a year of results
+   is weak evidence either way (a positive year happens 43% of the time even with no edge).
 
 ## TradingView scripts
 
