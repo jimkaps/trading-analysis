@@ -260,3 +260,73 @@ Runs of 8–12 losing trades in a row happen in about 1 year in 20 in every scen
   (about 3 times likelier with no edge than with the full edge), not proof. After 12 months the gap
   widens: a losing year happens 8% of the time with the full edge and 57% with none. A reasonable rule
   is to stop after a losing 12 months, and cut size after a losing 6 months.
+
+## Real prop-firm rules: Lucid Trading and MyFundedFutures
+
+Added 23 Nov 2026 (`prop_firms.py`, `news_dates.py`). Rules read from the firms' own sites on 23 Nov 2026:
+Lucid's plan cards at lucidtrading.com and support.lucidtrading.com; MyFundedFutures' plan pages at
+myfundedfutures.com/plans/* and help.myfundedfutures.com. Rules change often, so check before buying.
+
+**How it's simulated:** buy an evaluation, trade E until pass or bust (bust = reset at the same price),
+trade the funded account taking every payout the rules allow, buy a new evaluation after a funded bust or
+after the plan's last simulated payout. Drawdowns are checked against the worst open loss each day;
+MFFU Rapid's funded drawdown trails the best open profit minute by minute.
+
+| Plan | Price used | Drawdown | Key rules modelled |
+|---|---|---|---|
+| Lucid Flex 50K / 150K | $88 / $226 (coupon price = reset price; list $126 / $323) | $2,000 / $4,500 EOD, locks at +$100 | Eval: 40% consistency, 3 days. Funded: 5 days ≥ $150 / $250 per payout, payout ≤ 50% of profit, max $2,000 / $3,000, min $500, 90%, 5 payouts then live |
+| Lucid Pro 50K / 150K | $126 / $255.50 (list $180 / $365) | $2,000 / $4,500 EOD | 1-day pass. Funded: cycle profit ≥ $500 / $1,000, best day ≤ 40% of cycle, buffer $2,100 / $4,600, max $2,000 then $2,500 ($3,000 then $3,500), 90% |
+| MFFU Builder 50K | $92 | $2,000 EOD | $1,000 daily loss limit (flat for the day). Funded: ≥ $500 and 2 winning days per cycle, best day ≤ 50%, every 48 h, buffer $2,100, max $2,000, 80%, 5 payouts then live |
+| MFFU Pro 50K | $159 | $2,000 EOD, locks after 1st payout | Eval 50% consistency. Funded: every 14 days, buffer $2,100, min $1,000, 80%, 3 payouts then live review, **Tier 1 news rule** |
+| MFFU Rapid 50K | $125 | $2,000 EOD in eval, **intraday trailing** funded | Eval 50% consistency. Funded: daily payouts, buffer $2,100, min $500, 90%, **Tier 1 news rule** |
+
+**Assumptions where the firms don't say:** Lucid Pro allows 5 payouts before live (like Flex); MFFU Rapid
+has no per-payout cap; a Builder "qualifying day" is any winning day; Lucid's optional daily loss limit
+is switched off; MFFU 150K prices weren't published, so only 50K is modelled for MFFU.
+
+**The news rule costs E about 11%.** On 217 CPI / jobs / FOMC days in 2020–26, E made $10,576 per MNQ
+holding through; being flat 2 minutes before each release cut that to $4,087 (−$6,489).
+
+**Results, Jan 2020 – Nov 2026 (where E has its edge):** net per year after all fees, and across start dates every 2 months.
+
+| Plan | Eval / funded MNQ | Net per year | Worst start date | Worst drop | Fees | Payouts |
+|---|---|---|---|---|---|---|
+| **Lucid Flex 150K** | **5 / 2** | **$6,533** | **$6,204** | −$1,809 | $14,244 | 42 |
+| Lucid Flex 150K | 5 / 5 | $6,695 | $3,716 | −$3,618 | $22,610 | 29 |
+| **Lucid Flex 50K** | **3 / 3** | **$5,958** | $4,452 | −$2,205 | $10,319 | 31 |
+| Lucid Pro 150K | 5 / 2 | $5,444 | $4,508 | −$3,577 | $10,731 | 20 |
+| Lucid Pro 50K | 2 / 2 | $4,443 | $3,240 | −$1,801 | $12,222 | 23 |
+| Lucid Flex 50K | 2 / 2 | $4,138 | $2,794 | −$1,323 | $8,203 | 29 |
+| MFFU Rapid 50K | 2 / 1 | $3,636 | $3,667 | −$2,125 | $6,500 | 47 |
+| Lucid Flex 50K | 2 / 1 | $3,516 | $3,455 | −$794 | $5,998 | 33 |
+| MFFU Builder 50K | 2 / 1 | $2,967 | $2,900 | −$1,012 | $3,772 | 24 |
+| Lucid Flex 50K | 1 / 1 | $2,215 | $2,011 | −$882 | $2,999 | 19 |
+| MFFU Pro 50K | 2 / 1 | $1,761 | $1,681 | −$3,021 | $8,268 | 17 |
+
+Every plan and size was profitable from every start date in 2020–26. Full table: `python prop_firms.py`.
+
+**Results if the edge is gone (2014–2019, contracts scaled ×4.5 so dollar risk matches today):**
+every plan loses money from almost every start date, because fees keep going out and payouts rarely come.
+
+| Plan (today-equivalent size) | Net per year |
+|---|---|
+| Lucid Flex 50K, ~1/1 | −$449 |
+| MFFU Builder 50K, ~1/1 | −$483 |
+| MFFU Rapid 50K, ~1/1 | −$796 |
+| Lucid Pro 50K, ~1/1 | −$826 |
+| Lucid Flex 50K, ~2/1 | −$1,086 |
+| Lucid Flex 150K, ~5/2 | −$2,925 |
+| MFFU Pro 50K, ~2/2 | −$3,431 |
+
+**What this means:**
+- **Lucid Flex is the best fit for E** at both sizes: no buffer, no funded consistency rule, no news
+  rule, 90% split, and cheap resets. MFFU Pro is the worst fit: the news rule, 14-day payout wait,
+  80% split and 3-payout cap together cut the income to about half of Lucid Flex at the same size.
+- **MFFU Rapid's intraday trailing drawdown hurt less than expected** ($3.6k/yr at 2/1), because E's
+  wide stop and hold-to-close style rarely give back a large open profit late in the day.
+- **The choice is a bet on the edge:**
+  - *If E's 2020–26 edge holds:* Lucid Flex 150K at 5 MNQ eval → 2 MNQ funded made the most with the
+    best worst case (~$6.2–6.5k/yr).
+  - *If you're unsure (you should be, after 2014–19):* Lucid Flex 50K at 2/1 or 1/1. It earns $2.2–3.5k/yr
+    if the edge holds and loses only about $450–1,100/yr if it doesn't. Fees are the most you can lose.
+- These figures supersede the generic prop-model numbers above for these two firms.
