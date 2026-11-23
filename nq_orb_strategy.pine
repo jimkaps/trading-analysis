@@ -1,0 +1,108 @@
+//@version=5
+strategy("NQ Opening Range Breakout (A/B/C/D)", shorttitle="NQ ORB", overlay=true,
+     initial_capital=25000, default_qty_type=strategy.fixed, default_qty_value=1,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.62,
+     slippage=1, calc_on_every_tick=false, process_orders_on_close=false)
+
+// ---------- Inputs ----------
+preset   = input.string("E", "Preset", options=["A", "B", "C", "D", "E", "NY", "Custom"],
+     tooltip="A: 07:30-08:20, 205/211 pts, exit 16:00\nB: 07:30-08:20, +1.5%/-0.5%, exit 21:00\nC: 15:00-15:30, +/-1%, exit 18:30\nD: 07:30-08:30, no TP / -1%, exit 15:55 New York\nE: as D but stop = 1 x 14-day average daily range\nNY (New York time, forward test): range 10:00-10:30, TP 0.5 x / SL 0.2 x 14-day average daily range, exit 15:55\nA-E and Custom use London time. TP of 99% or more = no take-profit.\nTo run E and NY together, add this script to the chart twice.")
+cStart   = input.int(1500, "Custom range start (HHMM London)", group="Custom")
+cEnd     = input.int(1530, "Custom range end (HHMM London)",   group="Custom")
+cExit    = input.int(1830, "Custom exit time (HHMM London)",   group="Custom")
+cMode    = input.string("Percent", "Custom TP/SL units", options=["Percent", "Points", "ATR (SL only)"], group="Custom",
+     tooltip="ATR: stop = value x 14-day average daily high-low range; take-profit is then in percent")
+cTP      = input.float(1.0, "Custom take-profit", step=0.05, group="Custom")
+cSL      = input.float(1.0, "Custom stop-loss",   step=0.05, group="Custom")
+showLvls = input.bool(true, "Plot range high/low")
+
+isNY = preset == "NY"
+tz   = isNY ? "America/New_York" : "Europe/London"
+
+toMin(hhmm) => math.floor(hhmm / 100) * 60 + hhmm % 100
+
+isDE      = preset == "D" or preset == "E"
+startHHMM = preset == "A" or preset == "B" or isDE ? 730 : preset == "C" ? 1500 : isNY ? 1000 : cStart
+endHHMM   = preset == "A" or preset == "B" ? 820 : isDE ? 830 : preset == "C" ? 1530 : isNY ? 1030 : cEnd
+exitHHMM  = preset == "A" ? 1600 : preset == "B" ? 2100 : preset == "C" ? 1830 : isDE ? 1555 : isNY ? 1555 : cExit
+// D, E and NY exit on the New York clock (15:55 NY = 20:55 London most of the year, 19:55 London
+// in the weeks when UK and US clocks change on different dates), so you're always flat before prop
+// firms' 16:10-16:59 NY cut-offs. Other presets exit on the London clock.
+exitTZ    = isDE or isNY ? "America/New_York" : tz
+usePct    = preset == "A" ? false : preset == "Custom" ? cMode != "Points" : true
+useATR    = preset == "E" or isNY or (preset == "Custom" and cMode == "ATR (SL only)")
+tpATR     = isNY                     // take-profit also sized by the daily range
+tpVal     = preset == "A" ? 205.0 : preset == "B" ? 1.5 : preset == "C" ? 1.0 : isDE ? 99.0 : isNY ? 0.5 : cTP
+slVal     = preset == "A" ? 211.0 : preset == "B" ? 0.5 : preset == "C" ? 1.0 : isDE ? 1.0 : isNY ? 0.2 : cSL
+noTP      = usePct and not tpATR and tpVal >= 99
+
+// 14-day average of daily high-low range, from completed days only (no look-ahead)
+dRange = request.security(syminfo.tickerid, "D", ta.sma(high - low, 14)[1], lookahead=barmerge.lookahead_on)
+slDist = useATR ? slVal * dRange : na
+
+rs = toMin(startHHMM)
+re = toMin(endHHMM)
+ex = toMin(exitHHMM)
+
+// London minute-of-day for bar open and bar close
+m      = hour(time, tz) * 60 + minute(time, tz)
+mEnd   = hour(time_close, tz) * 60 + minute(time_close, tz)
+mEndAdj = mEnd < m ? mEnd + 1440 : mEnd   // bar closing at/after midnight
+
+// minute-of-day on the exit clock
+mX      = hour(time, exitTZ) * 60 + minute(time, exitTZ)
+mXEnd   = hour(time_close, exitTZ) * 60 + minute(time_close, exitTZ)
+mXEndAdj = mXEnd < mX ? mXEnd + 1440 : mXEnd
+
+inRange      = m >= rs and m < re
+lastRangeBar = inRange and mEndAdj >= re
+pastExit     = mX < ex and mXEndAdj >= ex    // bar that ends at or past the exit time
+inWindow     = m >= re and mXEndAdj < ex
+
+// ---------- Range tracking ----------
+var float rh = na
+var float rl = na
+var bool  traded = false
+var bool  ready  = false
+var int   closedAtStart = 0
+
+if inRange and not inRange[1]
+    rh := high
+    rl := low
+    traded := false
+    ready := false
+    closedAtStart := strategy.closedtrades
+else if inRange
+    rh := math.max(rh, high)
+    rl := math.min(rl, low)
+
+if lastRangeBar
+    ready := true
+
+// Mark the day as traded once anything has filled
+if ready and (strategy.position_size != 0 or strategy.closedtrades > closedAtStart)
+    traded := true
+
+// ---------- Orders ----------
+longTP  = noTP ? na : tpATR ? rh + tpVal * dRange : usePct ? rh * (1 + tpVal / 100) : rh + tpVal
+longSL  = useATR ? rh - slDist : usePct ? rh * (1 - slVal / 100) : rh - slVal
+shortTP = noTP ? na : tpATR ? rl - tpVal * dRange : usePct ? rl * (1 - tpVal / 100) : rl - tpVal
+shortSL = useATR ? rl + slDist : usePct ? rl * (1 + slVal / 100) : rl + slVal
+
+if ready and not traded and (lastRangeBar or inWindow) and strategy.position_size == 0
+    strategy.entry("Long",  strategy.long,  stop=rh, oca_name="orb", oca_type=strategy.oca.cancel)
+    strategy.entry("Short", strategy.short, stop=rl, oca_name="orb", oca_type=strategy.oca.cancel)
+    strategy.exit("Long exit",  from_entry="Long",  limit=longTP,  stop=longSL)
+    strategy.exit("Short exit", from_entry="Short", limit=shortTP, stop=shortSL)
+
+// End of trading window: flatten and cancel anything pending
+if ready and pastExit
+    strategy.cancel_all()
+    strategy.close_all(comment="Time exit")
+    ready := false
+    traded := true
+
+// ---------- Plots ----------
+plot(showLvls and (ready or inRange) ? rh : na, "Range high", color=color.new(color.green, 0), style=plot.style_linebr)
+plot(showLvls and (ready or inRange) ? rl : na, "Range low",  color=color.new(color.red, 0),   style=plot.style_linebr)
+bgcolor(inRange ? color.new(color.blue, 90) : na, title="Range window")
