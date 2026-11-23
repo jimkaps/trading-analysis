@@ -10,6 +10,12 @@ All P&L is after costs unless stated.
 
 ## Bottom line
 
+> **Update 23 Nov 2026 — out-of-sample test failed.** On 2014–2019 Nasdaq-100 data that no earlier
+> test had touched, preset E lost −$2,115 on 1 MNQ, and all 36 nearby settings lost money. Before costs
+> it made 0.017% per trade (t-stat 0.8, indistinguishable from zero) against 0.096% in 2020–25 (t-stat 2.9).
+> E's edge exists only from 2020 onwards, so treat everything below as a possible recent regime, not a
+> proven long-run edge. See [Out-of-sample test: 2014–2019](#out-of-sample-test-20142019).
+
 - **Best strategy: preset E on MNQ.** London 07:30–08:30 range breakout, stop = 1 × 14-day average
   daily range, no take-profit, flat at 15:55 New York.
 - **1 MNQ, 2020 – Nov 2026:** +$58,526 (15:55 NY exit), worst drawdown −$7,164, profitable 7 of 7 years.
@@ -139,3 +145,44 @@ Scripts: `prop_sim.py`, `prop_paths.py`, `prop_detail.py`, `prop_lifecycle.py`, 
 `own_account.py`, `risk_sim.py`, `risk_cap_check.py`, `risk_structure.py`, `single_acct.py`,
 `single_rank.py`, `single_check.py`, `survive_search.py`, `survive_pct.py`, `compare_all.py`,
 `exit_ny_check.py`.
+
+## Out-of-sample test: 2014–2019
+
+Added 23 Nov 2026 (`futures_test.py`, data `nq_1m_2012_2026.parquet` = Dukascopy 2012–2019 + the original
+2020–2026 file; the two join at the same price).
+
+**Data quality:** 2012 has no London-morning prices at all and 2013 is about half filler bars, so the
+clean test is **2014–2019** (238–258 usable days a year). E's own rules skip filler days.
+
+**Preset E, unchanged (15:55 New York exit), 1 MNQ equivalent, after costs:**
+
+| Year | E | D | Gross % per trade (before costs) |
+|---|---|---|---|
+| 2013 (partial) | −$936 | −$693 | −0.060% |
+| 2014 | +$43 | −$36 | +0.047% |
+| 2015 | −$797 | −$742 | +0.002% |
+| 2016 | −$1,670 | −$1,784 | −0.036% |
+| 2017 | −$117 | −$41 | +0.025% |
+| 2018 | +$2,059 | −$18 | +0.082% |
+| 2019 | −$1,634 | −$1,454 | −0.016% |
+| **2014–19** | **−$2,115** | **−$4,076** | **+0.017% (t 0.8)** |
+| 2020–25, for comparison | +$37,281 | +$19,591 | +0.096% (t 2.9) |
+
+**Nearby settings, 2014–19:** 0 of 36 (start 07:15–07:45, range 45–90 min, stop 0.8–1.5× ATR) made
+money; on average they were profitable in fewer than 2 of 6 years.
+
+**Is it just cheaper prices or quieter markets?** No. The percentage figures remove the price-level
+effect. Volatility doesn't explain it either: 2015, 2016 and 2019 had average daily ranges (1.4–1.5%)
+similar to 2024 (1.5%), yet 2024 was clearly positive and those years weren't.
+
+**What this means:**
+- E's edge is not a long-standing feature of NQ. It appears from 2020, which could be a real change in
+  how NQ trades in the London morning (more pre-US-open participation since 2020), or simply the
+  period the strategy was fitted to. This data can't tell the two apart.
+- Either way the evidence is much weaker than it looked. If it's a regime, it can end without warning;
+  if it's fitting, there was never an edge.
+- Paper-trading before risking money is now essential, not optional. Set a stopping rule in advance
+  (for example, stop if 6 months of paper trades average below zero).
+- The prop and own-account projections above assume the 2020–26 edge continues.
+
+Still to do: compare index vs real futures data (TradingView NQ1! on 15-minute bars).
