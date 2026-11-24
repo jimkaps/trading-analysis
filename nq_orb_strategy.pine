@@ -89,16 +89,40 @@ longSL  = useATR ? rh - slDist : usePct ? rh * (1 - slVal / 100) : rh - slVal
 shortTP = noTP ? na : tpATR ? rl - tpVal * dRange : usePct ? rl * (1 - tpVal / 100) : rl - tpVal
 shortSL = useATR ? rl + slDist : usePct ? rl * (1 + slVal / 100) : rl + slVal
 
+// ---------- Alert messages ----------
+// Order-fill alerts: create an alert on this strategy with "Order fills and alert() function calls" and
+// message {{strategy.order.alert_message}}. Each fill (entry, take-profit, stop, time exit) then sends its own
+// message the moment it fills. The "orders armed" message below is an alert() call and sends itself.
+px(v) => na(v) ? "none" : str.tostring(v, format.mintick)
+tag = "NQ ORB " + preset + " | " + syminfo.ticker + " | "
+
+var float lTP = na
+var float lSL = na
+var float sTP = na
+var float sSL = na
+
 if ready and not traded and (lastRangeBar or inWindow) and strategy.position_size == 0
-    strategy.entry("Long",  strategy.long,  stop=rh, oca_name="orb", oca_type=strategy.oca.cancel)
-    strategy.entry("Short", strategy.short, stop=rl, oca_name="orb", oca_type=strategy.oca.cancel)
-    strategy.exit("Long exit",  from_entry="Long",  limit=longTP,  stop=longSL)
-    strategy.exit("Short exit", from_entry="Short", limit=shortTP, stop=shortSL)
+    lTP := longTP
+    lSL := longSL
+    sTP := shortTP
+    sSL := shortSL
+    strategy.entry("Long",  strategy.long,  stop=rh, oca_name="orb", oca_type=strategy.oca.cancel,
+         alert_message=tag + "LONG ENTRY filled, buy stop " + px(rh) + " | SL " + px(longSL) + " | TP " + px(longTP))
+    strategy.entry("Short", strategy.short, stop=rl, oca_name="orb", oca_type=strategy.oca.cancel,
+         alert_message=tag + "SHORT ENTRY filled, sell stop " + px(rl) + " | SL " + px(shortSL) + " | TP " + px(shortTP))
+    strategy.exit("Long exit",  from_entry="Long",  limit=longTP,  stop=longSL,
+         alert_profit=tag + "LONG EXIT: take-profit " + px(longTP), alert_loss=tag + "LONG EXIT: stop-loss " + px(longSL))
+    strategy.exit("Short exit", from_entry="Short", limit=shortTP, stop=shortSL,
+         alert_profit=tag + "SHORT EXIT: take-profit " + px(shortTP), alert_loss=tag + "SHORT EXIT: stop-loss " + px(shortSL))
+
+if lastRangeBar
+    alert(tag + "range set " + px(rl) + " - " + px(rh) + " | buy stop " + px(rh) + " (SL " + px(longSL) + ", TP " + px(longTP) +
+         ") | sell stop " + px(rl) + " (SL " + px(shortSL) + ", TP " + px(shortTP) + ")", alert.freq_once_per_bar_close)
 
 // End of trading window: flatten and cancel anything pending
 if ready and pastExit
     strategy.cancel_all()
-    strategy.close_all(comment="Time exit")
+    strategy.close_all(comment="Time exit", alert_message=tag + (strategy.position_size > 0 ? "LONG" : "SHORT") + " EXIT: time exit (flat for the day)")
     ready := false
     traded := true
 
@@ -106,3 +130,12 @@ if ready and pastExit
 plot(showLvls and (ready or inRange) ? rh : na, "Range high", color=color.new(color.green, 0), style=plot.style_linebr)
 plot(showLvls and (ready or inRange) ? rl : na, "Range low",  color=color.new(color.red, 0),   style=plot.style_linebr)
 bgcolor(inRange ? color.new(color.blue, 90) : na, title="Range window")
+
+// Entry, stop-loss and take-profit of the open trade (presets D and E have no take-profit, so no TP line)
+showTrade = input.bool(true, "Plot entry, SL and TP of the open trade")
+isLong  = strategy.position_size > 0
+isShort = strategy.position_size < 0
+inPos   = showTrade and (isLong or isShort)
+plot(inPos ? strategy.position_avg_price : na, "Entry", color=color.new(color.gray, 0), style=plot.style_linebr, linewidth=1)
+plot(inPos ? (isLong ? lSL : sSL) : na, "Stop-loss",   color=color.new(color.red, 0),  style=plot.style_linebr, linewidth=2)
+plot(inPos ? (isLong ? lTP : sTP) : na, "Take-profit", color=color.new(color.lime, 0), style=plot.style_linebr, linewidth=2)
