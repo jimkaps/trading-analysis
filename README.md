@@ -29,6 +29,7 @@ Backtests on Dukascopy 1-minute data (NQ, ES, BTC, gold; Jan 2020 – Nov 2026).
 
 - `nq_orb_strategy.pine`: ORB presets A, B, C, D, E (default), NY and Custom.
 - `nq_bb_ema_strategy.pine`: NQ Bollinger + EMA200 strategy.
+- `btc_bb_breakout.pine`: BTC 60-minute Bollinger breakout (use on a 1-hour BTC chart).
 
 ## Re-running
 

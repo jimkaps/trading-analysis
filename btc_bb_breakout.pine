@@ -1,0 +1,98 @@
+//@version=5
+// BTC 60-minute Bollinger breakout (research: FINDINGS_bollinger.md, sections 3-4).
+// Rules, as tested in btc_breakout_stress.py / btc_oos_test.py:
+//   * 1-hour bars (UTC-aligned, as on crypto exchanges). Bollinger 20 / 3.0 on the close.
+//   * First close outside the band -> trade in the direction of the break at the next bar's open.
+//   * Stop starts 1.5 x ATR(14) from entry (ATR = simple average of true range), then moves to the
+//     middle band whenever that is closer; it never moves back.
+//   * Time exit: close after 50 bars. One position at a time; signals while in a trade are ignored.
+//   * Costs: 0.025% per side (0.05% round trip). Size: fixed $50,000 per trade, no compounding.
+// Use it on a 1-hour chart, e.g. BINANCE:BTCUSDT, BYBIT:BTCUSDT.P or COINBASE:BTCUSD.
+// Backtest edge per trade after fees: ~0.8% (2017-19), 0.3-0.4% (2020-23), 0.1% (2025-26).
+strategy("BTC 60m Bollinger Breakout", shorttitle="BTC BB BO", overlay=true,
+     initial_capital=50000, default_qty_type=strategy.cash, default_qty_value=50000,
+     commission_type=strategy.commission.percent, commission_value=0.025,
+     slippage=0, pyramiding=0, process_orders_on_close=false, calc_on_every_tick=false)
+
+// ---------- Inputs ----------
+bbLen   = input.int(20, "Bollinger length", minval=2)
+bbMult  = input.float(3.0, "Bollinger width (std devs)", step=0.25)
+atrLen  = input.int(14, "ATR length", minval=1)
+slAtr   = input.float(1.5, "Initial stop (x ATR)", step=0.25)
+maxBars = input.int(50, "Time exit (bars)", minval=1)
+trail   = input.bool(true, "Trail stop to the middle band")
+doLong  = input.bool(true, "Take longs")
+doShort = input.bool(true, "Take shorts")
+posCash = input.float(50000, "Position size ($)", minval=1)
+showBB  = input.bool(true, "Plot bands and stop")
+
+if timeframe.period != "60"
+    runtime.error("This strategy was tested on 1-hour bars. Switch the chart to 1h.")
+
+// ---------- Indicators ----------
+basis = ta.sma(close, bbLen)
+dev   = bbMult * ta.stdev(close, bbLen)          // population std dev, as in the Python tests
+upper = basis + dev
+lower = basis - dev
+atr   = ta.sma(ta.tr(true), atrLen)
+
+longSig  = close > upper and not (close[1] > upper[1])
+shortSig = close < lower and not (close[1] < lower[1])
+
+// ---------- State ----------
+var float stopPx = na
+var float sigAtr = na
+pos = strategy.position_size
+
+// first bar after a fill: set the initial stop from the actual entry price
+// (the backtest ratchets over every middle-band value since the signal bar, so include the signal bar's)
+if pos != 0 and pos[1] == 0
+    stopPx := pos > 0 ? strategy.position_avg_price - slAtr * sigAtr : strategy.position_avg_price + slAtr * sigAtr
+    if trail
+        stopPx := pos > 0 ? math.max(stopPx, basis[1]) : math.min(stopPx, basis[1])
+
+// trail to the middle band (ratchet only)
+if pos > 0 and trail
+    stopPx := math.max(stopPx, basis)
+if pos < 0 and trail
+    stopPx := math.min(stopPx, basis)
+
+// time exit: 50 bars counting the entry bar
+if pos != 0
+    held = bar_index - strategy.opentrades.entry_bar_index(0)
+    if held >= maxBars - 1
+        strategy.close_all(comment="time")
+
+// keep the protective stop updated
+if pos > 0
+    strategy.exit("LX", "L", stop=stopPx, comment="stop")
+if pos < 0
+    strategy.exit("SX", "S", stop=stopPx, comment="stop")
+
+// ---------- Entries ----------
+if pos == 0 and not na(atr) and not na(basis)
+    qty = posCash / close
+    if longSig and doLong
+        sigAtr := atr
+        stopPx := close - slAtr * atr               // provisional until the fill price is known
+        if trail
+            stopPx := math.max(stopPx, basis)       // the backtest trails from the first minute
+        strategy.entry("L", strategy.long, qty=qty, comment="long")
+        strategy.exit("LX", "L", stop=stopPx, comment="stop")
+    else if shortSig and doShort
+        sigAtr := atr
+        stopPx := close + slAtr * atr
+        if trail
+            stopPx := math.min(stopPx, basis)
+        strategy.entry("S", strategy.short, qty=qty, comment="short")
+        strategy.exit("SX", "S", stop=stopPx, comment="stop")
+
+if pos == 0 and pos[1] != 0 and not (longSig or shortSig)
+    stopPx := na
+
+// ---------- Plots ----------
+plot(showBB ? basis : na, "Middle", color=color.new(color.gray, 0))
+plot(showBB ? upper : na, "Upper", color=color.new(color.teal, 0))
+plot(showBB ? lower : na, "Lower", color=color.new(color.teal, 0))
+plot(showBB and strategy.position_size != 0 ? stopPx : na, "Stop", color=color.new(color.red, 0),
+     style=plot.style_linebr, linewidth=2)
