@@ -12,3 +12,7 @@ __pycache__/
 
 # Packaged archives
 *.zip
+
+# Generated outputs
+ibs_orb_daily.csv
+combined_pnl_monthly.csv
