@@ -2,10 +2,20 @@
 
 Backtests on Dukascopy 1-minute data (NQ, ES, BTC, gold; Jan 2020 – Nov 2026).
 
+## Strategies in use (24 Nov 2026)
+
+1. **NQ ORB, preset E** on MNQ (Lucid prop account): TradingView alert "NQ ORB E".
+2. **IBS, phone-app rule** on the US Tech 100 CFD (Trading 212): the IBS Assistant Android app.
+3. **BTC 4h SFP + VOL** on Phemex (automated bot): TradingView alert as a cross-check.
+
+Rules, sizes, alerts and what was retired: [STRATEGIES.md](STRATEGIES.md).
+
 ## Start here
 
 | Document | What it covers |
 |---|---|
+| [STRATEGIES.md](STRATEGIES.md) | The three strategies in use, how each one alerts, and what was retired |
+| [FINDINGS_2026-11-24.md](FINDINGS_2026-11-24.md) | TradingView script check and fixes, ORB vs IBS, app IBS vs TradingView IBS, ORB combo vs E, combined P&L, Lucid |
 | [FINDINGS_orb_prop.md](FINDINGS_orb_prop.md) | NQ opening range breakout (presets A–E), everything tested on top of it, ES/BTC/gold, prop-firm and own-account simulations |
 | [FINDINGS_bollinger.md](FINDINGS_bollinger.md) | Bollinger Band scalps, confluence filters and breakouts on BTC, NQ, ES, gold; BTC 60-minute breakout stress test |
 
@@ -27,7 +37,9 @@ Backtests on Dukascopy 1-minute data (NQ, ES, BTC, gold; Jan 2020 – Nov 2026).
 
 ## TradingView scripts
 
-- `nq_orb_strategy.pine`: ORB presets A, B, C, D, E (default), NY and Custom.
+- `nq_orb_strategy.pine`: ORB presets A, B, C, D, E (default), NY and Custom; entry/exit alerts and entry/SL/TP lines (TradingView version 5).
+- `ibs_long_strategy.pine`: the TradingView IBS long rule with alerts (retired: the phone-app rule is better).
+- `tv_fixed/`: fixed copies of the scripts that were on the "Unnamed" layout (see its README).
 - `nq_bb_ema_strategy.pine`: NQ Bollinger + EMA200 strategy.
 - `btc_bb_breakout.pine`: BTC 60-minute Bollinger breakout (use on a 1-hour BTC chart).
 
