@@ -248,6 +248,13 @@ this matters little, but intrabar stop fills are slightly less precise in those 
   typical minute range in 2024–26 (0.055–0.074%) was higher than in 2018–19 (0.029–0.038%), yet the
   edge was a quarter as large. The likeliest explanation is more traders running trend-following
   breakouts on BTC.
+- **TradingView check (24 Nov 2026):** `btc_bb_breakout.pine` compiled cleanly and ran on
+  BINANCE:BTCUSDT 1h, Jan 2024 – Nov 2026: 339 trades, +0.12% per trade after the 0.05% fee,
+  +$20.7k on $50k, worst drawdown $9.6k, 36% winners. By year: 2024 +0.17% (134 trades),
+  2025 +0.07% (105), 2026 +0.11% (100). The Python backtest on Dukascopy gave 273 trades at about
+  +0.18% (+$23.9k) for the same period: same pattern (2025 weakest) and similar size. Binance has
+  about 24% more trades because it trades through Saturdays, which Dukascopy's feed skips; the
+  weekend/weekday split was mixed year to year, so it doesn't suggest a rule.
 - **Practical rule:** only trade it with low fees (≤ 0.05% round trip including spread), small size,
   and a kill switch, for example stop if a rolling 12 months averages below +0.10% per trade
   after fees. At 2025–26 levels it is barely worth the effort.
