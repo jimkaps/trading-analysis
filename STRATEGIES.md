@@ -21,7 +21,10 @@ Backtest details and the tests behind each decision are in [FINDINGS_2026-11-24.
   2013–19 lost $3k and no nearby setting worked then.
 - **Lucid:** Flex fits best. 2020–26: Flex 50K 2/1 (eval/funded MNQ) ≈ $3.5k/yr, worst drop $794;
   Flex 50K 3/3 ≈ $6.0k/yr; Flex 150K 5/2 ≈ $6.5k/yr. Every plan loses money on 2014–19.
-- **Suggested start:** Lucid Flex 50K at 2/1. Stop buying evaluations after 5–6 without a payout.
+- **Suggested start (updated 24 Nov, `prop_optimize.py`):** Lucid Flex 50K, 2 MNQ in the evaluation with a
+  **$1,200 daily profit cap** (script input "Evaluation daily profit cap"), 2 MNQ once funded with the cap off.
+  2020–26 ≈ $7.3k/yr (worst start $6.1k) vs $3.9k for the old 2/1 plan; +$2.7k/yr even on 2014–19.
+  Stop buying evaluations after 5–6 without a payout.
 
 ## 2. IBS, phone-app rule
 

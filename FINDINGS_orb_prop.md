@@ -330,3 +330,40 @@ every plan loses money from almost every start date, because fees keep going out
   - *If you're unsure (you should be, after 2014–19):* Lucid Flex 50K at 2/1 or 1/1. It earns $2.2–3.5k/yr
     if the edge holds and loses only about $450–1,100/yr if it doesn't. Fees are the most you can lose.
 - These figures supersede the generic prop-model numbers above for these two firms.
+
+## Optimizing preset E for Lucid Flex 50K (management rules, not entries)
+
+Added 24 Nov 2026 (`prop_optimize.py`). E's entry and exit stay unchanged: new entry setups were tested
+before and failed (`orb_combo_test.py`), and fitting entries is how E got over-tuned to 2020–26. What's
+searched instead are account-management rules, scored from start dates every 2 months on 2020–26, on
+2014–19 at today's dollar risk (E had no edge then), and against a zero-edge control (same days, random
+trade direction).
+
+| Lever | Tested | Effect |
+|---|---|---|
+| **Evaluation daily profit cap** | none / $900 / $1,200 | **The big one.** A $1,200 cap (40% of the $3,000 target) means one big day can never break Lucid's 40% consistency rule. Without it, a single $2,500 day forces $6,250 of profit before you can pass. |
+| Evaluation size | 1 / 2 / 3 MNQ | 2–3 beat 1 |
+| Coast at 70% of target (drop to 1 MNQ) | on / off | No help |
+| Funded size before the floor locks | 1 / 2 MNQ | 2 slightly better |
+| Funded size after it locks | 1 / 2 / 3 MNQ | 3 hurts in 2014–19; 1–2 similar |
+| Size down when a full stop > 60% of drawdown room | on / off | Hurts: $1,000/yr less |
+
+**Results (net per year after all fees; worst = worst start date):**
+
+| Plan (eval MNQ / funded MNQ) | 2020–26 median | 2020–26 worst | 2014–19 median (no edge) | Evals bought 2020–26 |
+|---|---|---|---|---|
+| Current: 2 / 1, no cap | $3,949 | $3,455 | −$249 | 68 |
+| **2 / 2 + $1,200 eval cap** | **$7,270** | **$6,075** | **+$2,728** | 96 |
+| 3 / 2 then 1 after lock + $1,200 cap | $7,449 | $6,629 | +$2,687 | 130 |
+| 3 / 2 + $1,200 cap | $8,023 | $6,517 | +$2,408 | 157 |
+
+**Zero-edge control** (2020–26 days, random direction, 5 draws): current plan +$1,168/yr; 2 / 2 + cap
++$2,222/yr; 3 / 1 + cap +$4,052/yr. In this model the account itself is a positive bet: $88 resets and
+90% payouts mean even random trading earns something if done consistently. So part of every number above
+is "option value" from Lucid's pricing and rules, not E's edge. It depends on Lucid keeping these rules
+and paying out as modelled, and on the cap filling at the limit price.
+
+**Recommendation:** run E at **2 MNQ in the evaluation with a $1,200 daily profit cap, and 2 MNQ once
+funded with no cap**. Roughly double the current plan's income in 2020–26, a better worst case, and
+positive even in the no-edge years. `nq_orb_strategy.pine` now has a "Prop account" group: Contracts and
+"Evaluation daily profit cap ($)". Set 2 and 1200 in the evaluation, then 2 and 0 once funded.

@@ -15,6 +15,10 @@ cMode    = input.string("Percent", "Custom TP/SL units", options=["Percent", "Po
 cTP      = input.float(1.0, "Custom take-profit", step=0.05, group="Custom")
 cSL      = input.float(1.0, "Custom stop-loss",   step=0.05, group="Custom")
 showLvls = input.bool(true, "Plot range high/low")
+qtyIn    = input.int(1, "Contracts", minval=1, group="Prop account",
+     tooltip="Lucid Flex 50K plan (prop_optimize.py): 2 in the evaluation, 2 once funded.")
+capUsd   = input.float(0, "Evaluation daily profit cap ($, 0 = off)", minval=0, step=100, group="Prop account",
+     tooltip="Take profit once the day's trade is up this much after costs. Use 1200 (40% of the $3,000 target) in a Lucid Flex 50K evaluation so one big day can't break the 40% consistency rule; set back to 0 once funded.")
 
 isNY = preset == "NY"
 tz   = isNY ? "America/New_York" : "Europe/London"
@@ -89,6 +93,11 @@ longSL  = useATR ? rh - slDist : usePct ? rh * (1 - slVal / 100) : rh - slVal
 shortTP = noTP ? na : tpATR ? rl - tpVal * dRange : usePct ? rl * (1 - tpVal / 100) : rl - tpVal
 shortSL = useATR ? rl + slDist : usePct ? rl * (1 + slVal / 100) : rl + slVal
 
+// Prop evaluation cap: points needed to bank capUsd after 2 ticks slippage per side and commission
+capPts  = capUsd > 0 ? capUsd / (qtyIn * syminfo.pointvalue) + 4 * syminfo.mintick + 2 * 0.62 / syminfo.pointvalue : na
+longTP  := capUsd > 0 ? (na(longTP) ? rh + capPts : math.min(longTP, rh + capPts)) : longTP
+shortTP := capUsd > 0 ? (na(shortTP) ? rl - capPts : math.max(shortTP, rl - capPts)) : shortTP
+
 // ---------- Alert messages ----------
 // Order-fill alerts: create an alert on this strategy with "Order fills and alert() function calls" and
 // message {{strategy.order.alert_message}}. Each fill (entry, take-profit, stop, time exit) then sends its own
@@ -106,9 +115,9 @@ if ready and not traded and (lastRangeBar or inWindow) and strategy.position_siz
     lSL := longSL
     sTP := shortTP
     sSL := shortSL
-    strategy.entry("Long",  strategy.long,  stop=rh, oca_name="orb", oca_type=strategy.oca.cancel,
+    strategy.entry("Long",  strategy.long,  qty=qtyIn, stop=rh, oca_name="orb", oca_type=strategy.oca.cancel,
          alert_message=tag + "LONG ENTRY filled, buy stop " + px(rh) + " | SL " + px(longSL) + " | TP " + px(longTP))
-    strategy.entry("Short", strategy.short, stop=rl, oca_name="orb", oca_type=strategy.oca.cancel,
+    strategy.entry("Short", strategy.short, qty=qtyIn, stop=rl, oca_name="orb", oca_type=strategy.oca.cancel,
          alert_message=tag + "SHORT ENTRY filled, sell stop " + px(rl) + " | SL " + px(shortSL) + " | TP " + px(shortTP))
     strategy.exit("Long exit",  from_entry="Long",  limit=longTP,  stop=longSL,
          alert_profit=tag + "LONG EXIT: take-profit " + px(longTP), alert_loss=tag + "LONG EXIT: stop-loss " + px(longSL))
