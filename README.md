@@ -15,7 +15,8 @@ Backtests on Dukascopy 1-minute data (NQ, ES, BTC, gold; Jan 2020 – Nov 2026).
    +$58.5k on 1 MNQ over 2020–26, −$7.2k worst drawdown, 7 of 7 years profitable. Best strategy found,
    **but it failed on untouched 2014–19 data** (−$2.1k, edge indistinguishable from zero): see the findings.
 2. **BTC 60-minute Bollinger breakout** (3σ, stop trailed to middle band): real edge that passes stress
-   tests, but shrinking from ~0.4% to ~0.1% a trade since 2024.
+   tests **and its out-of-sample test on 2017–19** (+0.79%/trade, all nearby settings profitable). The most
+   robust edge found, but decaying almost every year: 1.8% (2017) → 0.5% (2018–19) → 0.1% a trade (2025–26).
 3. **Bollinger scalps / fades and 300+ ORB add-ons:** no edge after costs.
 4. **Prop route:** with real Lucid / MyFundedFutures rules, Lucid Flex fits E best: $2.2k–6.5k/yr in 2020–26
    depending on size, but every plan loses (fees) if the edge is gone. MFFU Pro fits worst (news rule).

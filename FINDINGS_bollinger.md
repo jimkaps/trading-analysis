@@ -16,6 +16,12 @@ The one candidate worth paper trading: **BTC 60-min Bollinger(20, 3.0) breakout,
 trailing to the middle band, 50-bar time stop**. About 109 trades/yr, +0.30% per trade after a 0.05%
 fee (about $16k/yr on a $50k position, max drawdown about $16.6k). It earned 0.42%/trade in 2020 but only 0.10% in 2026.
 
+> **Update 24 Nov 2026 — passed its out-of-sample test.** On May 2017 – Dec 2019 BTC data that no
+> earlier test used, the same rule made +0.79% per trade, profitable in all 3 years, with all 432
+> nearby settings profitable and no random-entry run matching it (longs and shorts). It is a real
+> effect. But the edge has shrunk almost every year since 2017 (1.8% → 0.5% → 0.4% → 0.3% → 0.1%
+> per trade), which looks like an effect being competed away. See [section 4](#4-out-of-sample-test-may-2017--dec-2019).
+
 ---
 
 ## Data and method (all studies)
@@ -198,6 +204,56 @@ very small with low fees. If 2025-26 is the new normal, ordinary taker fees woul
 
 ---
 
+## 4. Out-of-sample test: May 2017 – Dec 2019
+
+Added 24 Nov 2026 (`btc_oos_test.py`, data `btc_1m_2017_2026.parquet` = Dukascopy BTCUSD from
+7 May 2017, the earliest it has, plus the original 2020–2026 file). Same rule and code, nothing changed.
+2017–19 has more flat filler minutes (19–25% vs 12% in 2020 and ~1% since 2024); on 60-min signals
+this matters little, but intrabar stop fills are slightly less precise in those years.
+
+**Core rule by year** (0.05% fee, $ on a $50k position):
+
+| Year | Trades | Net % / trade | $ | Win % | Longs | Shorts |
+|---|---|---|---|---|---|---|
+| 2017 (May–Dec) | 77 | 1.81% | $69,536 | 39% | 2.27% | 1.15% |
+| 2018 | 154 | 0.55% | $42,206 | 30% | 0.24% | 0.82% |
+| 2019 | 159 | 0.53% | $41,733 | 32% | 0.64% | 0.42% |
+| 2020 | 133 | 0.42% | $27,596 | 32% | 0.75% | 0.05% |
+| 2021 | 83 | 0.36% | $14,807 | 37% | 0.40% | 0.32% |
+| 2022 | 126 | 0.30% | $18,820 | 39% | 0.33% | 0.28% |
+| 2023 | 136 | 0.40% | $26,972 | 32% | 0.69% | −0.01% |
+| 2024 | 105 | 0.28% | $14,801 | 43% | 0.81% | −0.19% |
+| 2025 | 89 | 0.12% | $5,215 | 37% | −0.14% | 0.34% |
+| 2026 | 79 | 0.10% | $3,859 | 33% | 0.38% | −0.12% |
+
+2017–19: +0.79% per trade, about $51k a year on $50k, worst drawdown $6.2k, 3 of 3 years profitable.
+2018 was a bear market and shorts carried it, so this isn't just riding BTC's rise.
+
+**Checks on 2017–19:**
+- **Nearby settings:** all 432 variations (band length 15/20/30, width 2.5–3.25σ, stop 1–2 ATR, time
+  stop 25/50/100 bars, bar start :00/:15/:30/:45) made money; 98% made money in every year. Median
+  0.52% per trade, against 0.29% for the same settings in 2020–26.
+- **Random entries:** same trade count, long/short mix and exits at random hourly closes, 2,000 draws:
+  random median +0.05% per trade, 95th percentile +0.21%; the breakout's +0.79% was never matched
+  (p < 0.0005 for all trades, longs and shorts).
+- **Costs and execution:** +0.64% per trade at a 0.20% fee; +0.63–0.65% entering 5–15 minutes late;
+  +0.75% going flat before every data gap.
+
+**What this means:**
+- **This is a real, long-standing effect:** it held on years it was never fitted to, across settings,
+  both directions, and against random entries. That is a much stronger result than NQ preset E, which
+  failed the same kind of test.
+- **But it is decaying.** Per-trade edge fell from 1.8% (2017) to about 0.5% (2018–19), 0.3–0.4%
+  (2020–23), 0.28% (2024) and 0.10–0.12% (2025–26). Falling volatility doesn't explain it: BTC's
+  typical minute range in 2024–26 (0.055–0.074%) was higher than in 2018–19 (0.029–0.038%), yet the
+  edge was a quarter as large. The likeliest explanation is more traders running trend-following
+  breakouts on BTC.
+- **Practical rule:** only trade it with low fees (≤ 0.05% round trip including spread), small size,
+  and a kill switch, for example stop if a rolling 12 months averages below +0.10% per trade
+  after fees. At 2025–26 levels it is barely worth the effort.
+
+---
+
 ## Reproducing
 
 All scripts run with the project's virtual environment from this folder, and each finishes in under a minute.
@@ -219,6 +275,10 @@ All scripts run with the project's virtual environment from this folder, and eac
 
 # 3. BTC 60m breakout stress test
 .venv/Scripts/python.exe btc_breakout_stress.py
+
+# 4. Out-of-sample 2017-19 (download first, then join with btc_1m.parquet into btc_1m_2017_2026.parquet)
+DUKA_INSTR=BTCUSD DUKA_SCALE=10 .venv/Scripts/python.exe fetch_data.py 2017-01-01 2019-12-31 btc_1m_2017_2019.parquet 6
+.venv/Scripts/python.exe btc_oos_test.py btc_1m_2017_2026.parquet
 ```
 
 ## Files
@@ -233,5 +293,6 @@ All scripts run with the project's virtual environment from this folder, and eac
 | `bb_breakout.py` | Bollinger breakout sweep with market-structure filters, four markets |
 | `bb_breakout_check.py` | 60m breakout checks: cross-market consistency and random-entry drift control |
 | `btc_breakout_stress.py` | Full stress test of the BTC 60m breakout |
+| `btc_oos_test.py` | Out-of-sample test of the BTC 60m breakout on May 2017 – Dec 2019 |
 
 Result tables (`*.parquet`) are regenerated by the scripts and are not committed.
