@@ -42,6 +42,7 @@ Rules, sizes, alerts and what was retired: [STRATEGIES.md](STRATEGIES.md).
 - `tv_fixed/`: fixed copies of the scripts that were on the "Unnamed" layout (see its README).
 - `nq_bb_ema_strategy.pine`: NQ Bollinger + EMA200 strategy.
 - `btc_bb_breakout.pine`: BTC 60-minute Bollinger breakout (use on a 1-hour BTC chart).
+- `nq_orb_prop.pine`: preset E in Lucid prop mode (2 MNQ; $1,200 daily cap in the evaluation). See STRATEGIES.md, strategy 4.
 
 ## Re-running
 

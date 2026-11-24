@@ -1,13 +1,14 @@
 # Strategies in use (as of 24 Nov 2026)
 
-Three strategies are live or being set up. Everything else has been retired (list at the end).
+Four strategies are live or being set up. Everything else has been retired (list at the end).
 Backtest details and the tests behind each decision are in [FINDINGS_2026-11-24.md](FINDINGS_2026-11-24.md).
 
 | Strategy | Market / account | Code | Alerts |
 |---|---|---|---|
-| **1. NQ ORB, preset E** | MNQ futures, Lucid prop account | `nq_orb_strategy.pine` (TradingView "NQ Opening Range Breakout (A/B/C/D)", version 5) | TradingView alert "NQ ORB E": app, email and pop-up |
+| **1. NQ ORB, preset E** | MNQ futures, own account / reference (on Lucid use 4) | `nq_orb_strategy.pine` (TradingView "NQ Opening Range Breakout (A/B/C/D)", version 5) | TradingView alert "NQ ORB E": app, email and pop-up |
 | **2. IBS, phone-app rule** | US Tech 100 CFD, Trading 212 (by hand) | Android app "IBS Assistant": repo `jimkaps/android_kernel_samsung_crespo`, branch `claude/sharp-franklin-o9bmsa` | The app's own phone notifications |
 | **3. BTC 4h SFP + VOL** | BTCUSDT perpetual, Phemex (automated bot, runs elsewhere) | TradingView "BTC 4h SFP+VOL" version 1; the bot's code is not in this repo | TradingView alert on PHEMEX:BTCUSDT.P 4h: app only (cross-check of the bot) |
+| **4. NQ ORB E, Lucid prop mode** | MNQ futures, Lucid Flex 50K | `nq_orb_prop.pine` (TradingView "NQ ORB E - Lucid prop") | TradingView alert "ORB E prop": app, email and pop-up |
 
 ## 1. NQ ORB, preset E
 
@@ -21,10 +22,8 @@ Backtest details and the tests behind each decision are in [FINDINGS_2026-11-24.
   2013–19 lost $3k and no nearby setting worked then.
 - **Lucid:** Flex fits best. 2020–26: Flex 50K 2/1 (eval/funded MNQ) ≈ $3.5k/yr, worst drop $794;
   Flex 50K 3/3 ≈ $6.0k/yr; Flex 150K 5/2 ≈ $6.5k/yr. Every plan loses money on 2014–19.
-- **Suggested start (updated 24 Nov, `prop_optimize.py`):** Lucid Flex 50K, 2 MNQ in the evaluation with a
-  **$1,200 daily profit cap** (script input "Evaluation daily profit cap"), 2 MNQ once funded with the cap off.
-  2020–26 ≈ $7.3k/yr (worst start $6.1k) vs $3.9k for the old 2/1 plan; +$2.7k/yr even on 2014–19.
-  Stop buying evaluations after 5–6 without a payout.
+- **On Lucid, run strategy 4 instead** (same trades, prop-specific management). Plain E stays the reference and
+  the version for an own account, where a profit cap would cut the big days that make its money.
 
 ## 2. IBS, phone-app rule
 
@@ -43,6 +42,64 @@ Backtest details and the tests behind each decision are in [FINDINGS_2026-11-24.
   (2 × and 2.5 ×), 60-bar time exit, 1% risk, max 3× leverage, smaller in volatile markets.
 - **Backtest ($10k, Dec 2022 – Nov 2026, TradingView):** 298 trades, +$7,970, profit factor 1.87,
   max drawdown $822, every year positive. Live since 7 Nov 2026: one trade, −$13.
+
+## 4. NQ ORB E, Lucid prop mode
+
+Preset E with the account management optimized for Lucid Flex 50K (`prop_optimize.py`, findings in
+[FINDINGS_orb_prop.md](FINDINGS_orb_prop.md), last section). **Same entries, stops and exits as E.**
+
+**How it works**
+
+| | Evaluation | Funded |
+|---|---|---|
+| Contracts | 2 MNQ | 2 MNQ |
+| Daily profit cap | **$1,200**: a take-profit that closes the day's trade once it's up $1,200 after costs | None |
+| Why | Lucid needs best day ≤ 40% of total profit. With the cap no day can exceed $1,200 = 40% of the $3,000 target, so one big trend day can't push the pass out to $6,000+. Profit beyond the target is worth nothing in an evaluation anyway. | No consistency rule once funded, so E keeps its big days, which is where its profit comes from. |
+
+**Backtest, Lucid Flex 50K, net per year after all fees** (start dates every 2 months):
+
+| | Plain E (2 eval / 1 funded) | **Prop mode** |
+|---|---|---|
+| 2020–26, typical start | $3,949 | **$7,270** |
+| 2020–26, worst start | $3,455 | **$6,075** |
+| 2014–19 (E had no edge) | −$249 | **+$2,728** |
+| Evaluations bought 2020–26 | 68 | 96 |
+
+Part of the gain is Lucid's pricing rather than E: with random trade direction the same plan still nets about
++$2.2k/yr in the model ($88 resets, 90% payouts). That holds only while Lucid keeps these rules.
+
+**Process**
+
+*Set up (once)*
+1. In TradingView, add `nq_orb_prop.pine` ("NQ ORB E - Lucid prop") to an MNQ1! 5-minute chart. Inputs:
+   Account phase **Evaluation**, contracts 2 / 2, cap **1200**.
+2. Create the alert: condition "Order fills and alert() function calls", message
+   `{{strategy.order.alert_message}}`, no expiry. Turn off the plain "NQ ORB E" alert so you don't get two sets.
+3. Buy a Lucid Flex 50K evaluation with the coupon (≈ $88). Leave the optional daily loss limit off and the
+   consistency at 40%.
+
+*Every trading day*
+4. At 08:30 London the "range set" alert gives the levels. Place a buy-stop at the range high and a sell-stop at
+   the range low, 2 MNQ each, one-cancels-other, each with its stop-loss (and, in the evaluation, the take-profit
+   at the cap level) from the alert.
+5. When one side fills, cancel the other. Don't move the stop or target.
+6. At 15:55 New York close anything still open (the alert tells you). Lucid flattens at 16:45 New York anyway.
+
+*Evaluation*
+7. Pass = $3,000 profit with best day ≤ 40% (the cap guarantees that part); usually at least 3 trading days.
+8. If the balance hits the trailing floor, the evaluation is failed: reset it (≈ $88) and carry on the next day.
+
+*Once funded*
+9. Change the input to **Funded** (cap off) and **recreate the alert**: TradingView alerts keep the inputs they
+   were created with.
+10. Request a payout once there are 5 days of ≥ $150 profit since the last one and the cycle is positive:
+    up to 50% of profit, max $2,000, min $500; you get 90%.
+11. After 5 payouts Lucid moves the account to live; re-check the live rules before trading it.
+12. If the funded account busts: buy a new evaluation, switch the input back to **Evaluation**, recreate the alert.
+
+*When to stop*
+13. Stop buying evaluations after 5–6 in a row without a payout, and review if 12 months of results are negative
+    (a losing year happens ~8% of the time if the edge is real, ~57% if it isn't).
 
 ## All three together
 

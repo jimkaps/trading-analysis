@@ -1,0 +1,127 @@
+//@version=5
+// NQ ORB E - Lucid Flex prop mode (STRATEGIES.md, strategy 4; research: prop_optimize.py).
+// Same trades as preset E of nq_orb_strategy.pine; only the account management differs:
+//   * Evaluation: 2 MNQ and a $1,200 daily profit cap (take profit once the day's trade is up $1,200
+//     after costs). 40% of the $3,000 target, so one big day can never break Lucid's 40% consistency rule.
+//   * Funded: 2 MNQ, no cap (Lucid Flex has no consistency rule once funded).
+// Rules of E: range 07:30-08:30 London; buy-stop at the range high, sell-stop at the low, first fill only;
+// stop 1 x 14-day average daily range; flat at 15:55 New York.
+// Use on CME_MINI:MNQ1! (or the front MNQ contract), 5-minute chart.
+strategy("NQ ORB E - Lucid prop", shorttitle="ORB E prop", overlay=true,
+     initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=2,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.62,
+     slippage=2, calc_on_every_tick=false, process_orders_on_close=false)
+
+// ---------- Inputs ----------
+phase    = input.string("Evaluation", "Account phase", options=["Evaluation", "Funded"],
+     tooltip="Evaluation: daily profit cap on. Funded: cap off. Switch this the day the account is funded.")
+evalQty  = input.int(2, "Contracts in the evaluation", minval=1, group="Sizing")
+fundQty  = input.int(2, "Contracts once funded", minval=1, group="Sizing")
+capUsd   = input.float(1200, "Evaluation daily profit cap ($)", minval=0, step=100, group="Sizing",
+     tooltip="40% of the evaluation's profit target. Lucid Flex 50K: target $3,000 -> 1200. 150K: target $9,000 -> 3600.")
+showLvls = input.bool(true, "Plot range high/low")
+showTrade = input.bool(true, "Plot entry, SL and TP of the open trade")
+
+isEval = phase == "Evaluation"
+qty    = isEval ? evalQty : fundQty
+cap    = isEval ? capUsd : 0.0
+
+// ---------- Times (London range, New York exit) ----------
+toMin(hhmm) => math.floor(hhmm / 100) * 60 + hhmm % 100
+tz     = "Europe/London"
+exitTZ = "America/New_York"          // 15:55 NY = flat before prop firms' 16:10-16:59 NY cut-offs
+rs = toMin(730)
+re = toMin(830)
+ex = toMin(1555)
+
+m        = hour(time, tz) * 60 + minute(time, tz)
+mEnd     = hour(time_close, tz) * 60 + minute(time_close, tz)
+mEndAdj  = mEnd < m ? mEnd + 1440 : mEnd
+mX       = hour(time, exitTZ) * 60 + minute(time, exitTZ)
+mXEnd    = hour(time_close, exitTZ) * 60 + minute(time_close, exitTZ)
+mXEndAdj = mXEnd < mX ? mXEnd + 1440 : mXEnd
+
+inRange      = m >= rs and m < re
+lastRangeBar = inRange and mEndAdj >= re
+pastExit     = mX < ex and mXEndAdj >= ex
+inWindow     = m >= re and mXEndAdj < ex
+
+// 14-day average daily high-low range, completed days only (no look-ahead)
+dRange = request.security(syminfo.tickerid, "D", ta.sma(high - low, 14)[1], lookahead=barmerge.lookahead_on)
+
+// ---------- Range tracking ----------
+var float rh = na
+var float rl = na
+var bool  traded = false
+var bool  ready  = false
+var int   closedAtStart = 0
+
+if inRange and not inRange[1]
+    rh := high
+    rl := low
+    traded := false
+    ready := false
+    closedAtStart := strategy.closedtrades
+else if inRange
+    rh := math.max(rh, high)
+    rl := math.min(rl, low)
+
+if lastRangeBar
+    ready := true
+
+if ready and (strategy.position_size != 0 or strategy.closedtrades > closedAtStart)
+    traded := true
+
+// ---------- Levels ----------
+longSL  = rh - dRange
+shortSL = rl + dRange
+// points needed to bank `cap` after 2 ticks slippage per side and commission
+capPts  = cap > 0 ? cap / (qty * syminfo.pointvalue) + 4 * syminfo.mintick + 2 * 0.62 / syminfo.pointvalue : na
+longTP  = cap > 0 ? rh + capPts : na
+shortTP = cap > 0 ? rl - capPts : na
+
+// ---------- Alerts ----------
+// Create one alert on this strategy: condition "Order fills and alert() function calls",
+// message {{strategy.order.alert_message}}.
+px(v) => na(v) ? "none" : str.tostring(v, format.mintick)
+tag = "ORB E prop (" + phase + ", " + str.tostring(qty) + " MNQ) | "
+
+var float lTP = na
+var float lSL = na
+var float sTP = na
+var float sSL = na
+
+if ready and not traded and (lastRangeBar or inWindow) and strategy.position_size == 0
+    lTP := longTP
+    lSL := longSL
+    sTP := shortTP
+    sSL := shortSL
+    strategy.entry("Long",  strategy.long,  qty=qty, stop=rh, oca_name="orb", oca_type=strategy.oca.cancel,
+         alert_message=tag + "LONG ENTRY filled, buy stop " + px(rh) + " | SL " + px(longSL) + " | TP " + px(longTP))
+    strategy.entry("Short", strategy.short, qty=qty, stop=rl, oca_name="orb", oca_type=strategy.oca.cancel,
+         alert_message=tag + "SHORT ENTRY filled, sell stop " + px(rl) + " | SL " + px(shortSL) + " | TP " + px(shortTP))
+    strategy.exit("Long exit",  from_entry="Long",  limit=longTP,  stop=longSL,
+         alert_profit=tag + "LONG EXIT: daily cap reached " + px(longTP), alert_loss=tag + "LONG EXIT: stop-loss " + px(longSL))
+    strategy.exit("Short exit", from_entry="Short", limit=shortTP, stop=shortSL,
+         alert_profit=tag + "SHORT EXIT: daily cap reached " + px(shortTP), alert_loss=tag + "SHORT EXIT: stop-loss " + px(shortSL))
+
+if lastRangeBar
+    alert(tag + "range set " + px(rl) + " - " + px(rh) + " | buy stop " + px(rh) + " (SL " + px(longSL) + ", TP " + px(longTP) +
+         ") | sell stop " + px(rl) + " (SL " + px(shortSL) + ", TP " + px(shortTP) + ")", alert.freq_once_per_bar_close)
+
+if ready and pastExit
+    strategy.cancel_all()
+    strategy.close_all(comment="Time exit", alert_message=tag + (strategy.position_size > 0 ? "LONG" : "SHORT") + " EXIT: time exit (flat for the day)")
+    ready := false
+    traded := true
+
+// ---------- Plots ----------
+plot(showLvls and (ready or inRange) ? rh : na, "Range high", color=color.new(color.green, 0), style=plot.style_linebr)
+plot(showLvls and (ready or inRange) ? rl : na, "Range low",  color=color.new(color.red, 0),   style=plot.style_linebr)
+bgcolor(inRange ? color.new(color.blue, 90) : na, title="Range window")
+isLong  = strategy.position_size > 0
+isShort = strategy.position_size < 0
+inPos   = showTrade and (isLong or isShort)
+plot(inPos ? strategy.position_avg_price : na, "Entry", color=color.new(color.gray, 0), style=plot.style_linebr, linewidth=1)
+plot(inPos ? (isLong ? lSL : sSL) : na, "Stop-loss",   color=color.new(color.red, 0),  style=plot.style_linebr, linewidth=2)
+plot(inPos ? (isLong ? lTP : sTP) : na, "Take-profit (cap)", color=color.new(color.lime, 0), style=plot.style_linebr, linewidth=2)
