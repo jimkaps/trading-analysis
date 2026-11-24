@@ -1,0 +1,149 @@
+//@version=5
+// Fixed copy of "BB Breakout Fixed + TP/SL/Trail Alerts" (saved script "BB Breakout Fixed No Trail", version 35).
+// Fixes, 2026-11-24:
+//   1. trail_points / trail_offset are in TICKS. The original passed the ATR (a price distance), so on MNQ a
+//      20-point ATR became a 5-point trail and on BTC a $500 ATR became a $5 trail. Now converted to ticks.
+//   2. The plotted trail line and the trailing-stop alert now follow the same rule as the real trail order
+//      (activates once price has moved 1 x ATR in your favour, then trails 1 x ATR behind the best price).
+//   3. Exit alerts now fire from the trade that actually closed (TP / SL / Trail), not from bar highs/lows.
+//   4. slippage=150 ticks was 37.5 points per side on MNQ ($1.50 on BTC). Now 2 ticks.
+strategy("BB Breakout + TP/SL/Trail (fixed)", overlay=true, pyramiding=0,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=40,
+     commission_type=strategy.commission.percent, commission_value=0.06, slippage=2)
+
+//==================================================
+// INPUTS
+//==================================================
+bb_len  = input.int(20, "BB Length")
+bb_mult = input.float(2.0, "BB Multiplier")
+
+ema_len   = input.int(50, "EMA Length")
+use_trend = input.bool(true, "Use Trend Filter")
+
+slope_len       = input.int(8, "EMA Slope Smooth")
+trend_threshold = input.float(0.00025, "Slope Threshold")
+
+max_trades_per_day      = input.int(3, "Max Trades Per Day")
+min_bars_between_trades = input.int(3, "Bars Between Trades")
+
+atr_len  = input.int(14, "ATR Length")
+atr_mult = input.float(2.0, "ATR Stop Multiplier")
+tp_mult  = input.float(4.0, "ATR Take Profit Multiplier")
+trl_mult = input.float(1.0, "ATR Trail Distance (activation and offset)")
+
+show_labels = input.bool(true, "Show Labels")
+
+//==================================================
+// BOLLINGER BANDS / EMA
+//==================================================
+bb_mid = ta.sma(close, bb_len)
+bb_std = ta.stdev(close, bb_len)
+bb_up  = bb_mid + bb_std * bb_mult
+bb_low = bb_mid - bb_std * bb_mult
+
+plot(bb_mid, color=color.orange, title="BB Mid")
+plot(bb_up,  color=color.blue,   title="BB Upper")
+plot(bb_low, color=color.blue,   title="BB Lower")
+
+ema = ta.ema(close, ema_len)
+plot(ema, color=color.yellow, title="EMA")
+
+ema_slope = ta.sma((ema - ema[1]) / ema[1], slope_len)
+trend_up  = ema_slope > trend_threshold
+trend_dn  = ema_slope < -trend_threshold
+
+//==================================================
+// SIGNALS AND LIMITS
+//==================================================
+long_signal  = close > bb_up  and (not use_trend or trend_up)
+short_signal = close < bb_low and (not use_trend or trend_dn)
+
+newDay = ta.change(time("D")) != 0
+var int trades_today = 0
+var int bars_since_trade = 9999
+if newDay
+    trades_today := 0
+bars_since_trade += 1
+
+can_trade = (max_trades_per_day == 0 or trades_today < max_trades_per_day) and bars_since_trade >= min_bars_between_trades
+
+atr = ta.atr(atr_len)
+var float entryATR = na
+
+//==================================================
+// ENTRIES
+//==================================================
+goLong  = long_signal  and can_trade and strategy.position_size <= 0
+goShort = short_signal and can_trade and strategy.position_size >= 0 and not goLong
+
+if goLong
+    entryATR := atr
+    strategy.entry("Long", strategy.long)
+    trades_today += 1
+    bars_since_trade := 0
+    if show_labels
+        label.new(bar_index, low, "LONG", color=color.green, textcolor=color.white, style=label.style_label_up)
+    alert("LONG ENTRY | " + syminfo.ticker + " | " + str.tostring(close), alert.freq_once_per_bar_close)
+
+if goShort
+    entryATR := atr
+    strategy.entry("Short", strategy.short)
+    trades_today += 1
+    bars_since_trade := 0
+    if show_labels
+        label.new(bar_index, high, "SHORT", color=color.red, textcolor=color.white, style=label.style_label_down)
+    alert("SHORT ENTRY | " + syminfo.ticker + " | " + str.tostring(close), alert.freq_once_per_bar_close)
+
+//==================================================
+// TP / SL / TRAIL
+//==================================================
+avgPx      = strategy.position_avg_price
+long_stop  = avgPx - entryATR * atr_mult
+long_tp    = avgPx + entryATR * tp_mult
+short_stop = avgPx + entryATR * atr_mult
+short_tp   = avgPx - entryATR * tp_mult
+
+trail_dist  = entryATR * trl_mult
+trail_ticks = math.max(1, math.round(trail_dist / syminfo.mintick))   // price distance -> ticks
+
+// best price since entry, to draw the trail the same way the broker emulator runs it
+var float best = na
+if strategy.position_size > 0
+    best := na(best) or strategy.position_size[1] <= 0 ? high : math.max(best, high)
+else if strategy.position_size < 0
+    best := na(best) or strategy.position_size[1] >= 0 ? low : math.min(best, low)
+else
+    best := na
+
+trail_long  = strategy.position_size > 0 and best >= avgPx + trail_dist ? best - trail_dist : na
+trail_short = strategy.position_size < 0 and best <= avgPx - trail_dist ? best + trail_dist : na
+
+if strategy.position_size > 0
+    strategy.exit("Long Exit", "Long", stop=long_stop, limit=long_tp,
+         trail_points=trail_ticks, trail_offset=trail_ticks,
+         comment_loss="SL", comment_profit="TP", comment_trailing="Trail")
+if strategy.position_size < 0
+    strategy.exit("Short Exit", "Short", stop=short_stop, limit=short_tp,
+         trail_points=trail_ticks, trail_offset=trail_ticks,
+         comment_loss="SL", comment_profit="TP", comment_trailing="Trail")
+
+//==================================================
+// PLOTS
+//==================================================
+plot(strategy.position_size > 0 ? long_tp    : na, title="Long TP",     color=color.lime,    linewidth=2, style=plot.style_linebr)
+plot(strategy.position_size > 0 ? long_stop  : na, title="Long SL",     color=color.red,     linewidth=2, style=plot.style_linebr)
+plot(trail_long,                                   title="Long Trail",  color=color.fuchsia, linewidth=2, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? short_tp   : na, title="Short TP",    color=color.lime,    linewidth=2, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? short_stop : na, title="Short SL",    color=color.red,     linewidth=2, style=plot.style_linebr)
+plot(trail_short,                                  title="Short Trail", color=color.fuchsia, linewidth=2, style=plot.style_linebr)
+
+//==================================================
+// EXIT ALERTS: from the trade that actually closed
+//==================================================
+nClosed = strategy.closedtrades
+if nClosed > nz(nClosed[1])
+    for i = nz(nClosed[1]) to nClosed - 1
+        side   = strategy.closedtrades.size(i) > 0 ? "LONG" : "SHORT"
+        reason = strategy.closedtrades.exit_comment(i)
+        reason := reason == "TP" ? "TAKE PROFIT" : reason == "SL" ? "STOP LOSS" : reason == "Trail" ? "TRAILING STOP" : "EXIT (" + reason + ")"
+        alert(side + " " + reason + " | " + syminfo.ticker + " | " + str.tostring(strategy.closedtrades.exit_price(i)), alert.freq_once_per_bar)

@@ -1,0 +1,57 @@
+//@version=6
+// Fixed copy of "H4" (draft 0.123 of the script now saved as "BTC 4h SFP+VOL"): three Donchian breakouts
+// (20, 12 and 40 bars) above/below the 200 EMA, 2.5 x ATR trailing stop, 45-bar time exit.
+// Fixes, 2026-11-24:
+//   1. Position size now uses syminfo.pointvalue and is rounded down to whole contracts on futures.
+//      The original asked for fractions of a contract on MNQ, which TradingView rounds to 0, so it never traded.
+//   2. slippage=100 ticks was 25 points per side on MNQ ($1 on BTC). Now 2 ticks.
+//   3. The open-trades loop no longer runs when there are no open trades.
+//   4. A sub-strategy no longer enters against the open position: in TradingView an opposite entry closes
+//      every open trade, so a short from one leg used to wipe out the longs of the other two.
+strategy("H4 (fixed)", overlay=true, initial_capital=10000, pyramiding=3,
+     commission_type=strategy.commission.percent, commission_value=0.06, slippage=2, calc_on_every_tick=false)
+
+riskPct = 1 / 100
+maxLev  = 3
+kS      = 2.5
+atr     = ta.atr(14)
+e200    = ta.ema(close, 200)
+isFut   = syminfo.type == "futures"
+pv      = syminfo.pointvalue
+
+f_s(_id, _N, _hold, _rs) =>
+    hh = ta.highest(high, math.max(_N, 1))[1]
+    ll = ta.lowest(low, math.max(_N, 1))[1]
+    var float stopPx = na
+    var int eBar = na
+    var bool was = false
+    int od = 0
+    nOpen = strategy.opentrades
+    if nOpen > 0
+        for i = 0 to nOpen - 1
+            if strategy.opentrades.entry_id(i) == _id
+                od := strategy.opentrades.size(i) > 0 ? 1 : -1
+    if od != 0 and not was
+        eBar := bar_index
+    was := od != 0
+    if od != 0
+        stopPx := od > 0 ? math.max(stopPx, close - kS * atr) : math.min(stopPx, close + kS * atr)
+        strategy.exit(_id + "x", _id, stop=stopPx)
+        if bar_index - eBar >= _hold
+            strategy.close(_id, comment="time")
+    else if barstate.isconfirmed and _N > 0
+        dir = close > hh and close > e200 ? 1 : (close < ll and close < e200 ? -1 : 0)
+        against = (dir > 0 and strategy.position_size < 0) or (dir < 0 and strategy.position_size > 0)
+        if dir != 0 and not against
+            sP  = close - dir * kS * atr
+            sd  = math.abs(close - sP) / close
+            qty = math.min(riskPct * _rs / sd, maxLev * _rs) * strategy.equity / (close * pv)
+            qty := isFut ? math.floor(qty) : qty
+            if qty > 0
+                strategy.entry(_id, dir > 0 ? strategy.long : strategy.short, qty=qty)
+                stopPx := sP
+    od
+
+f_s("A", 20, 45, 0.4)
+f_s("B", 12, 45, 0.3)
+f_s("C", 40, 45, 0.3)

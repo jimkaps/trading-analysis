@@ -1,0 +1,98 @@
+//@version=5
+// Fixed copy of "BB Breakout Fixed No Trail" (version 1, the copy on the "Unnamed" layout).
+// Fix, 2026-11-24: the original set no commission or slippage, so its backtest was too generous.
+// Costs now match the trail version: 0.06% commission per side and 2 ticks of slippage per fill.
+strategy("BB Breakout No Trail (fixed)", overlay=true, pyramiding=0,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=10,
+     commission_type=strategy.commission.percent, commission_value=0.06, slippage=2)
+
+bb_len  = input.int(20, "BB Length")
+bb_mult = input.float(2.0, "BB Multiplier")
+
+ema_len   = input.int(50, "EMA Length")
+use_trend = input.bool(true, "Use Trend Filter")
+
+slope_len       = input.int(8, "EMA Slope Smooth")
+trend_threshold = input.float(0.00025, "Slope Threshold")
+
+max_trades_per_day      = input.int(3, "Max Trades Per Day")
+min_bars_between_trades = input.int(3, "Bars Between Trades")
+
+atr_len  = input.int(14, "ATR Length")
+atr_mult = input.float(2.0, "ATR Stop Multiplier")
+tp_mult  = input.float(2.5, "ATR Take Profit Multiplier")
+
+show_labels = input.bool(true, "Show Labels")
+
+// Bollinger bands and EMA
+bb_mid = ta.sma(close, bb_len)
+bb_std = ta.stdev(close, bb_len)
+bb_up  = bb_mid + bb_std * bb_mult
+bb_low = bb_mid - bb_std * bb_mult
+plot(bb_mid, color=color.orange, title="BB Mid")
+plot(bb_up,  color=color.blue,   title="BB Upper")
+plot(bb_low, color=color.blue,   title="BB Lower")
+
+ema = ta.ema(close, ema_len)
+plot(ema, color=color.yellow, title="EMA")
+ema_slope = ta.sma((ema - ema[1]) / ema[1], slope_len)
+trend_up  = ema_slope > trend_threshold
+trend_dn  = ema_slope < -trend_threshold
+
+long_signal  = close > bb_up  and (not use_trend or trend_up)
+short_signal = close < bb_low and (not use_trend or trend_dn)
+
+// Daily controls
+newDay = ta.change(time("D")) != 0
+var int trades_today = 0
+var int bars_since_trade = 9999
+if newDay
+    trades_today := 0
+bars_since_trade += 1
+can_trade = (max_trades_per_day == 0 or trades_today < max_trades_per_day) and bars_since_trade >= min_bars_between_trades
+
+atr = ta.atr(atr_len)
+var float entryATR = na
+
+goLong  = long_signal  and can_trade and strategy.position_size <= 0
+goShort = short_signal and can_trade and strategy.position_size >= 0 and not goLong
+
+if goLong
+    entryATR := atr
+    strategy.entry("Long", strategy.long)
+    trades_today += 1
+    bars_since_trade := 0
+    if show_labels
+        label.new(bar_index, low, "LONG", color=color.green, textcolor=color.white, style=label.style_label_up)
+    alert("LONG ENTRY " + syminfo.ticker + " " + str.tostring(close), alert.freq_once_per_bar_close)
+
+if goShort
+    entryATR := atr
+    strategy.entry("Short", strategy.short)
+    trades_today += 1
+    bars_since_trade := 0
+    if show_labels
+        label.new(bar_index, high, "SHORT", color=color.red, textcolor=color.white, style=label.style_label_down)
+    alert("SHORT ENTRY " + syminfo.ticker + " " + str.tostring(close), alert.freq_once_per_bar_close)
+
+// Stops and targets
+avgPx      = strategy.position_avg_price
+long_stop  = avgPx - entryATR * atr_mult
+long_tp    = avgPx + entryATR * tp_mult
+short_stop = avgPx + entryATR * atr_mult
+short_tp   = avgPx - entryATR * tp_mult
+
+if strategy.position_size > 0
+    strategy.exit("Long Exit", "Long", stop=long_stop, limit=long_tp)
+if strategy.position_size < 0
+    strategy.exit("Short Exit", "Short", stop=short_stop, limit=short_tp)
+
+plot(strategy.position_size > 0 ? long_stop  : na, "Long SL",  color=color.red,  linewidth=2, style=plot.style_linebr)
+plot(strategy.position_size > 0 ? long_tp    : na, "Long TP",  color=color.lime, linewidth=2, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? short_stop : na, "Short SL", color=color.red,  linewidth=2, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? short_tp   : na, "Short TP", color=color.lime, linewidth=2, style=plot.style_linebr)
+
+if strategy.position_size[1] > 0 and strategy.position_size == 0
+    alert("LONG EXIT " + syminfo.ticker, alert.freq_once_per_bar_close)
+if strategy.position_size[1] < 0 and strategy.position_size == 0
+    alert("SHORT EXIT " + syminfo.ticker, alert.freq_once_per_bar_close)
